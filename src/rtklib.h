@@ -43,7 +43,7 @@
 #include <windows.h>
 #else
 #include <pthread.h>
-#include <sys/select.h>
+/* #include <sys/select.h> */
 #endif
 #ifdef __cplusplus
 extern "C" {
@@ -64,8 +64,6 @@ extern "C" {
 #define COPYRIGHT_RTKLIB \
             "Copyright (C) 2007-2020 T.Takasu\nAll rights reserved."
 
-#define ZWD2PWV     1000/6.5
-
 #define PI          3.1415926535897932  /* pi */
 #define D2R         (PI/180.0)          /* deg to rad */
 #define R2D         (180.0/PI)          /* rad to deg */
@@ -80,10 +78,13 @@ extern "C" {
 #define FE_WGS84    (1.0/298.257223563) /* earth flattening (WGS84) */
 
 #define HION        350000.0            /* ionosphere height (m) */
-
+#define TRACE
 #define MAXFREQ     7                   /* max NFREQ */
 
-
+#define ENACMP
+#define ENAGLO
+#define ENAGAL
+#define ENAGZS
 #define FREQ1       1.57542E9           /* L1/E1/B1C  frequency (Hz) */
 #define FREQ2       1.22760E9           /* L2         frequency (Hz) */
 #define FREQ5       1.17645E9           /* L5/E5a/B2a frequency (Hz) */
@@ -130,7 +131,7 @@ extern "C" {
 #define TSYS_IRN    6                   /* time system: IRNSS time */
 
 #ifndef NFREQ
-#define NFREQ       3                   /* number of carrier frequencies */
+#define NFREQ       5                   /* number of carrier frequencies */
 #endif
 #define NFREQGLO    2                   /* number of carrier frequencies of GLONASS */
 
@@ -528,11 +529,6 @@ extern "C" {
 #define unlock(f)   pthread_mutex_unlock(f)
 #define FILEPATHSEP '/'
 #endif
-
-
-#define HTROP       5000.0              /* troposphere height (m) */
-#define GRID_AZ_NUM 10                  /* number of grid in azimuth */
-#define GRID_EL_NUM 10                  /* number of grid in elevation */
 
 /* type definitions ----------------------------------------------------------*/
 
@@ -1108,6 +1104,9 @@ typedef struct {        /* satellite status type */
     double azel[2];     /* azimuth/elevation angles {az,el} (rad) */
     double resp[NFREQ]; /* residuals of pseudorange (m) */
     double resc[NFREQ]; /* residuals of carrier-phase (m) */
+    double dtrp; //ÐÞ¸Ä
+    double swd;
+    double swd_n;
     uint8_t vsat[NFREQ]; /* valid satellite flag */
     uint16_t snr[NFREQ]; /* signal strength (*SNR_UNIT dBHz) */
     uint8_t fix [NFREQ]; /* ambiguity fix flag (1:fix,2:float,3:hold) */

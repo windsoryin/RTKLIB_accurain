@@ -249,7 +249,7 @@ static int rescode(int iter, const obsd_t *obs, int n, const double *rs,
                    double *resp, int *ns)
 {
     gtime_t time;
-    double r,freq,dion,dtrp,vmeas,vion,vtrp,rr[3],pos[3],dtr,e[3],P;
+    double r,freq,dion=0.0,dtrp=0.0,vmeas,vion=0.0,vtrp=0.0,rr[3],pos[3],dtr,e[3],P;
     int i,j,nv=0,sat,sys,mask[NX-3]={0};
     
     trace(3,"resprng : n=%d\n",n);
@@ -312,9 +312,9 @@ static int rescode(int iter, const obsd_t *obs, int n, const double *rs,
         else if (sys==SYS_GAL) {v[nv]-=x[5]; H[5+nv*NX]=1.0; mask[2]=1;}
         else if (sys==SYS_CMP) {v[nv]-=x[6]; H[6+nv*NX]=1.0; mask[3]=1;}
         else if (sys==SYS_IRN) {v[nv]-=x[7]; H[7+nv*NX]=1.0; mask[4]=1;}
-#if 0 /* enable QZS-GPS time offset estimation */
+ /* enable QZS-GPS time offset estimation */
         else if (sys==SYS_QZS) {v[nv]-=x[8]; H[8+nv*NX]=1.0; mask[5]=1;}
-#endif
+
         else mask[0]=1;
         
         vsat[i]=1; resp[i]=v[nv]; (*ns)++;
@@ -346,10 +346,10 @@ static int valsol(const double *azel, const int *vsat, int n,
     
     /* Chi-square validation of residuals */
     vv=dot(v,v,nv);
-    if (nv>nx&&vv>chisqr[nv-nx-1]) {
+ /*  if (nv>nx && vv>chisqr[nv - nx - 1]) {
         sprintf(msg,"chi-square error nv=%d vv=%.1f cs=%.1f",nv,vv,chisqr[nv-nx-1]);
-        /*return 0;*/    /*20230627 modify: chi-square too restrict for BDS */
-    }
+        return 0;
+    }*/
     /* large GDOP check */
     for (i=ns=0;i<n;i++) {
         if (!vsat[i]) continue;
@@ -423,7 +423,7 @@ static int estpos(const obsd_t *obs, int n, const double *rs, const double *dts,
             if ((stat=valsol(azel,vsat,n,opt,v,nv,NX,msg))) {
                 sol->stat=opt->sateph==EPHOPT_SBAS?SOLQ_SBAS:SOLQ_SINGLE;
             }
-            free(v); free(H); free(var);
+           free(v); free(H); free(var);
             return stat;
         }
     }

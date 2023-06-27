@@ -1498,7 +1498,7 @@ static int readrnxfp(FILE *fp, gtime_t ts, gtime_t te, double tint,
     
     /* flag=0:except for clock,1:clock */
     if ((!flag&&*type=='C')||(flag&&*type!='C')) return 0;
-
+    
     /* read RINEX file body */
     switch (*type) {
         case 'O': return readrnxobs(fp,ts,te,tint,opt,index,ver,&tsys,tobs,obs,
@@ -1599,54 +1599,13 @@ extern int readrnxt(const char *file, int rcv, gtime_t ts, gtime_t te,
         }
     }
     /* expand wild-card */
-    /* return full file list using '*' */
     if ((n=expath(file,files,MAXEXFILE))<=0) {
         for (i=0;i<MAXEXFILE;i++) free(files[i]);
         return 0;
     }
-    /* decide whether files[i] is nav file*/
-    char substr[4]="GN.";
-    char str1[2]="EN";
-    char str11='l';
-    char str2[2]="RN";
-    char str22='g';
-    char str3[2]="CN";
-    char str33='f';
-
-    char* str_if;
-    int nav_flag=0;
-    str_if= strstr(files[0],substr);
-    if(str_if)
-    {
-        nav_flag=0;
-    }
-
     /* read rinex files */
     for (i=0;i<n&&stat>=0;i++) {
         stat=readrnxfile(files[i],ts,te,tint,opt,0,rcv,&type,obs,nav,sta);
-        if (nav_flag==1)
-        {
-            char temp_file[1024]="";
-            char *loc;
-            strcpy(temp_file,files[i]);
-            str_if= strstr(temp_file,substr);
-            strncpy(str_if, str1, 2);
-            str_if= strrchr(temp_file,'n');
-            strncpy(str_if, &str11, 1);
-            stat=readrnxfile(temp_file,ts,te,tint,opt,0,rcv,&type,obs,nav,sta);
-            strcpy(temp_file,files[i]);
-            str_if= strstr(temp_file,substr);
-            strncpy(str_if, str2, 2);
-            str_if= strrchr(temp_file,'n');
-            strncpy(str_if, &str22, 1);
-            stat=readrnxfile(temp_file,ts,te,tint,opt,0,rcv,&type,obs,nav,sta);
-            strcpy(temp_file,files[i]);
-            str_if= strstr(temp_file,substr);
-            strncpy(str_if, str3, 2);
-            str_if= strrchr(temp_file,'n');
-            strncpy(str_if, &str33, 1);
-            stat=readrnxfile(temp_file,ts,te,tint,opt,0,rcv,&type,obs,nav,sta);}
-
     }
     /* if station name empty, set 4-char name from file head */
     if (type=='O'&&sta) {
