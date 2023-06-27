@@ -1400,7 +1400,7 @@ static int decode_type1042(rtcm_t *rtcm)
         return -1;
     }
     trace(4,"decode_type1042: prn=%d iode=%d toe=%.0f\n",prn,eph.iode,eph.toes);
-    eph.iode=((int)eph.toes/720)%240;  /*BDS new ssr format*/
+    eph.iode=((int)eph.toes/720)%240;  /*20230627 modify: BDS new IOD calculation*/
     if (rtcm->outtype) {
         msg=rtcm->msgtype+strlen(rtcm->msgtype);
         sprintf(msg," prn=%2d iode=%3d iodc=%3d week=%d toe=%6.0f toc=%6.0f svh=%02X",
@@ -1710,7 +1710,7 @@ static int decode_ssr4(rtcm_t *rtcm, int sys, int subtype)
         case SYS_GLO: np=5; ni= 8; nj= 0; offp=  0; break;
         case SYS_GAL: np=6; ni=10; nj= 0; offp=  0; break;
         case SYS_QZS: np=4; ni= 8; nj= 0; offp=192; break;
-        case SYS_CMP: np=6; ni=10; nj=8; offp=  0; break;   /* BDS new ssr format*/
+        case SYS_CMP: np=6; ni=10; nj= 8; offp=  0; break;   /* 230627 modify: BDS new ssr format*/
         case SYS_SBS: np=6; ni= 9; nj=24; offp=120; break;
         default: return sync?0:10;
     }
