@@ -560,12 +560,12 @@ static void udclk_ppp(rtk_t *rtk)
 			/* time of prec ephemeris is based gpst */
             /* negelect receiver inter-system bias  */
 
-			//dtr=rtk->sol.dtr[0];
-				  //	}
-		//else {
+			/*dtr=rtk->sol.dtr[0]; */
+				  /*	}*/
+		/*else { */             
 
             dtr=i==0?rtk->sol.dtr[0]:rtk->sol.dtr[0]+rtk->sol.dtr[i];
-		//}
+		/*} */
         initx(rtk,CLIGHT*dtr,VAR_CLK,IC(i,&rtk->opt));
     }
 }
