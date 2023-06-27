@@ -362,6 +362,30 @@ extern int gmf_(double *mjd, double *lat, double *lon, double *hgt, double *zd,
                 double *gmfh, double *gmfw);
 #endif
 
+
+extern double troppp(const double *pos, const double *azel, double re,
+                     double htro, double *posp)
+{
+    double cosaz,rp,ap,sinap,tanap;
+    rp=re/(re+htro)*cos(azel[1]);
+    ap=PI/2.0-azel[1]-asin(rp);
+    sinap=sin(ap);
+    tanap=tan(ap);
+    cosaz=cos(azel[0]);
+    posp[0]=asin(sin(pos[0])*cos(ap)+cos(pos[0])*sinap*cosaz);
+
+    if ((pos[0]> 70.0*D2R&& tanap*cosaz>tan(PI/2.0-pos[0]))||
+        (pos[0]<-70.0*D2R&&-tanap*cosaz>tan(PI/2.0+pos[0]))) {
+        posp[1]=pos[1]+PI-asin(sinap*sin(azel[0])/cos(posp[0]));
+    }
+    else {
+        posp[1]=pos[1]+asin(sinap*sin(azel[0])/cos(posp[0]));
+    }
+    posp[2] = pos[2];
+    return asin(rp);
+}
+
+
 /* fatal error ---------------------------------------------------------------*/
 static void fatalerr(const char *format, ...)
 {
@@ -2564,7 +2588,7 @@ extern int readblq(const char *file, const char *sta, double *odisp)
     char buff[256],staname[32]="",name[32],*p;
     
     /* station name to upper case */
-    sscanf_s(sta,"%16s",staname);
+    sscanf(sta,"%16s",staname);
     for (p=staname;(*p=(char)toupper((int)(*p)));p++) ;
     
     if (!(fp=fopen(file,"r"))) {
@@ -2891,7 +2915,7 @@ extern int readnav(const char *file, nav_t *nav)
         if (!strncmp(buff,"IONUTC",6)) {
             for (i=0;i<8;i++) nav->ion_gps[i]=0.0;
             for (i=0;i<8;i++) nav->utc_gps[i]=0.0;
-            sscanf_s(buff,"IONUTC,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf",
+            sscanf(buff,"IONUTC,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf",
                    &nav->ion_gps[0],&nav->ion_gps[1],&nav->ion_gps[2],&nav->ion_gps[3],
                    &nav->ion_gps[4],&nav->ion_gps[5],&nav->ion_gps[6],&nav->ion_gps[7],
                    &nav->utc_gps[0],&nav->utc_gps[1],&nav->utc_gps[2],&nav->utc_gps[3],
@@ -2904,7 +2928,7 @@ extern int readnav(const char *file, nav_t *nav)
             nav->geph[prn-1]=geph0;
             nav->geph[prn-1].sat=sat;
             toe_time=tof_time=0;
-            sscanf_s(p+1,"%d,%d,%d,%d,%d,%ld,%ld,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,"
+            sscanf(p+1,"%d,%d,%d,%d,%d,%ld,%ld,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,"
                         "%lf,%lf,%lf,%lf",
                    &nav->geph[prn-1].iode,&nav->geph[prn-1].frq,&nav->geph[prn-1].svh,
                    &nav->geph[prn-1].sva,&nav->geph[prn-1].age,
@@ -2920,7 +2944,7 @@ extern int readnav(const char *file, nav_t *nav)
             nav->eph[sat-1]=eph0;
             nav->eph[sat-1].sat=sat;
             toe_time=toc_time=ttr_time=0;
-            sscanf_s(p+1,"%d,%d,%d,%d,%ld,%ld,%ld,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,"
+            sscanf(p+1,"%d,%d,%d,%d,%ld,%ld,%ld,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,"
                         "%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%d",
                    &nav->eph[sat-1].iode,&nav->eph[sat-1].iodc,&nav->eph[sat-1].sva ,
                    &nav->eph[sat-1].svh ,

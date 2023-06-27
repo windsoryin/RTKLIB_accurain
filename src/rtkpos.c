@@ -341,21 +341,11 @@ static void outsolstat(rtk_t *rtk)
         for (j=0;j<nfreq;j++) {
             fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%d,%.4f,%.4f,%.4f,%.1f,%d,%d,%d,%d,%d,%d\n",
                     week,tow,id,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,
-                    ssat->resp[j],ssat->resc[j],ssat->vsat[j], ssat->dtrp,ssat->swd,ssat->swd_n,
+                    ssat->resp[j],ssat->resc[j],ssat->vsat[j],ssat->dtrp,ssat->swd,ssat->swd_n,
                     ssat->snr[j]*SNR_UNIT,ssat->fix[j],ssat->slip[j]&3,
                     ssat->lock[j],ssat->outc[j],ssat->slipc[j],ssat->rejc[j]);
         }
     }
-    //ÐÞ¸Ä
-    /*for (i = 0; i < MAXSAT; i++) {
-        ssat = rtk->ssat + i;
-        if (!ssat->vs) continue;
-        satno2id(i + 1, id);
-        for (j = 0; j < 1; j++) {
-            fprintf(fp_stat, "$GRAD,%d,%.3f,%s,%d,%d,%.1f,%.1f,%.4f,%.4f\n",
-                week, tow, id, j + 1, ssat->vsat[j],ssat->azel[0] * R2D, ssat->azel[1] * R2D,ssat->dtrp,ssat->m_w);
-        }
-    } */
 }
 /* save error message --------------------------------------------------------*/
 static void errmsg(rtk_t *rtk, const char *format, ...)

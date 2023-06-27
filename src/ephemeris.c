@@ -649,12 +649,39 @@ static int satpos_ssr(gtime_t time, gtime_t teph, int sat, const nav_t *nav,
     if (ssr->iod[0]==ssr->iod[2]&&ssr->t0[2].time&&fabs(t3)<MAXAGESSR_HRCLK) {
         dclk+=ssr->hrclk;
     }
-    if (norm(deph,3)>MAXECORSSR||fabs(dclk)>MAXCCORSSR) {
-        trace(3,"invalid ssr correction: %s deph=%.1f dclk=%.1f\n",
-              time_str(time,0),norm(deph,3),dclk);
-        *svh=-1;
-        return 0;
+
+
+    sys=satsys(sat,NULL);
+    if (sys==SYS_CMP)
+    {
+        int sss=0;
+        if (norm(deph,3)>MAXECORSSR*10||fabs(dclk)>MAXCCORSSR) {
+            trace(3,"invalid ssr correction: %s deph=%.1f dclk=%.1f\n",
+                  time_str(time,0),norm(deph,3),dclk);
+            *svh=-1;
+            return 0;
+        }
     }
+    else
+    {
+        if (norm(deph,3)>MAXECORSSR||fabs(dclk)>MAXCCORSSR) {
+            trace(3,"invalid ssr correction: %s deph=%.1f dclk=%.1f\n",
+                  time_str(time,0),norm(deph,3),dclk);
+            *svh=-1;
+            return 0;
+        }
+    }
+    if (sys==SYS_GPS)
+    {
+        int sss=0;
+    }
+    if (sys==SYS_GAL)
+    {
+        int sss=0;
+    }
+
+
+
     /* satellite postion and clock by broadcast ephemeris */
     if (!ephpos(time,teph,sat,nav,ssr->iode,rs,dts,var,svh)) return 0;
     
@@ -780,9 +807,17 @@ extern void satposs(gtime_t teph, const obsd_t *obs, int n, const nav_t *nav,
         }
         /* transmission time by satellite clock */
         time[i]=timeadd(obs[i].time,-pr/CLIGHT);
-        
+        int sat=obs[i].sat;
+        int sys=satsys(sat,NULL);
+        if (sys==SYS_CMP)
+        {
+            int sss=0;
+        }
+        if (sys==SYS_GPS)
+        {
+            int sss=0;
+        }
         /* satellite clock bias by broadcast ephemeris */
-        /*用广播星历计算当前观测卫星钟差（没考虑相对论效应和TGD*/
         if (!ephclk(time[i],teph,obs[i].sat,nav,&dt)) {
             trace(3,"no broadcast clock %s sat=%2d\n",time_str(time[i],3),obs[i].sat);
             continue;
@@ -790,7 +825,6 @@ extern void satposs(gtime_t teph, const obsd_t *obs, int n, const nav_t *nav,
         time[i]=timeadd(time[i],-dt);
         
         /* satellite position and clock at transmission time */
-        /*调用 satpos，计算信号发射时刻卫星的 P、V、C。注意，此时钟差考虑了相对论效应，没有考虑 TGD*/
         if (!satpos(time[i],teph,obs[i].sat,ephopt,nav,rs+i*6,dts+i*2,var+i,
                     svh+i)) {
             trace(3,"no ephemeris %s sat=%2d\n",time_str(time[i],3),obs[i].sat);

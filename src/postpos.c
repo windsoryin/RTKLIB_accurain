@@ -913,7 +913,7 @@ static int execses(gtime_t ts, gtime_t te, double ti, const prcopt_t *popt,
     if (flag&&sopt->trace>0) {
         if (*outfile) {
             strcpy(tracefile,outfile);
-            strcat(tracefile,".trace"); //在文件名后添加".trace"
+            strcat(tracefile,".trace");
         }
         else {
             strcpy(tracefile,fopt->trace);

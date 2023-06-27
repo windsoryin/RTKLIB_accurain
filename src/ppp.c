@@ -117,6 +117,79 @@
 #define ID(opt)     (NP(opt)+NC(opt)+NT(opt)+NI(opt))
 #define IB(s,f,opt) (NR(opt)+MAXSAT*(f)+(s)-1)
 
+extern double troppp(const double *pos, const double *azel, double re,
+                     double htro, double *posp);
+
+static double cal_pwv_by_azel(gtime_t time, double *pos, double *azel, double *x, double *pos_new)
+{
+    double zenith_new;
+    const double zazel[]={0.0,PI/2.0};
+    double swd,zwd,m_w,cotz,grad_n,grad_e,pwv,zhd;
+
+    zenith_new = troppp(pos, azel, RE_WGS84, HTROP, pos_new);
+
+    zhd=tropmodel(time,pos,zazel,0.0);
+
+    /* mapping function */
+    tropmapf(time,pos_new,azel,&m_w);
+
+    if (azel[1]>0.0) {
+        /* m_w=m_0+m_0*cot(el)*(Gn*cos(az)+Ge*sin(az)): ref [6] */
+        cotz=1.0/tan(azel[1]);
+        grad_n=m_w*cotz*cos(azel[0]);
+        grad_e=m_w*cotz*sin(azel[0]);
+        m_w+=grad_n*x[0+1]+grad_e*x[0+2];
+    }
+
+    swd = m_w * (x[0]-zhd);
+    zwd = cos(zenith_new) * swd;
+    pwv = zwd * ZWD2PWV;
+
+    return pwv;
+}
+
+
+static void cal_pwv_grid(gtime_t time, double *pos, double *x)
+{
+    double az_start=PI/4, az_end=PI/3, el_start=PI/6, el_end=5*PI/6;
+    double az, el, az_step, el_step;
+    double azel[2], pos_new[3];
+    int az_num, el_num;
+    int i,j;
+    FILE *fp;
+
+
+    /* int GRID_AZ_NUM = 10;*/
+    /*int GRID_EL_NUM = 10;*/
+    double pwv[GRID_AZ_NUM][GRID_EL_NUM];
+    az_step = (az_end - az_start) / GRID_AZ_NUM;
+    el_step = (el_end - el_start) / GRID_EL_NUM;
+
+    fp=fopen("./pwv.txt","a");
+    for ( i = 0; i < GRID_AZ_NUM; i++)
+    {
+        for ( j = 0; j < GRID_EL_NUM; j++)
+        {
+            az = az_start + i * az_step;
+            el = el_start + j * el_step;
+            azel[0] = az;
+            azel[1] = el;
+            pwv[i][j] = cal_pwv_by_azel(time, pos, azel, x, pos_new);
+
+            if(fp==NULL) {
+                printf("file open error\n");
+            }
+            else{
+                fprintf(fp, "lat=%f, lon=%f, pwv=%f\n", pos_new[0] * R2D, pos_new[1] * R2D, pwv[i][j]);
+            }
+        }
+    }
+    fclose(fp);
+
+}
+
+
+
 /* standard deviation of state -----------------------------------------------*/
 static double STD(rtk_t *rtk, int i)
 {
@@ -194,6 +267,9 @@ extern int pppoutstat(rtk_t *rtk, char *buff)
 #endif
     return (int)(p-buff);
 }
+
+
+
 /* exclude meas of eclipsing satellite (block IIA) ---------------------------*/
 static void testeclipse(const obsd_t *obs, int n, const nav_t *nav, double *rs)
 {
@@ -465,20 +541,19 @@ static void detslp_mw(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     }
 }
 /* temporal update of position -----------------------------------------------*/
-static void udpos_ppp(rtk_t *rtk)/*位置更新*/
+static void udpos_ppp(rtk_t *rtk)
 {
     double *F,*P,*FP,*x,*xp,pos[3],Q[9]={0},Qv[9];
     int i,j,*ix,nx;
     
     trace(3,"udpos_ppp:\n");
     
-    /* fixed mode */ /*如果为ppp_fixed模式，直接初始化，用已知的固定点坐标*/
+    /* fixed mode */
     if (rtk->opt.mode==PMODE_PPP_FIXED) {
         for (i=0;i<3;i++) initx(rtk,rtk->opt.ru[i],1E-8,i);
         return;
     }
-    /* initialize position for first epoch */ 
-    /*检测状态量的值，如果是首次进入，就进行位置和状态赋初值*/
+    /* initialize position for first epoch */
     if (norm(rtk->x,3)<=0.0) {
         for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],VAR_POS,i);
         if (rtk->opt.dynamics) {
@@ -486,7 +561,7 @@ static void udpos_ppp(rtk_t *rtk)/*位置更新*/
             for (i=6;i<9;i++) initx(rtk,1E-6,VAR_ACC,i);
         }
     }
-    /* static ppp mode */ /*如果是ppp_static模式，状态量不变，只更新p阵，赋初值*/
+    /* static ppp mode */
     if (rtk->opt.mode==PMODE_PPP_STATIC) {
         for (i=0;i<3;i++) {
             rtk->P[i*(1+rtk->nx)]+=SQR(rtk->opt.prn[5])*fabs(rtk->tt);
@@ -494,7 +569,6 @@ static void udpos_ppp(rtk_t *rtk)/*位置更新*/
         return;
     }
     /* kinmatic mode without dynamics */
-    /*如果是ppp-kinematic模式，但运动模型不是动态，初始化位置和方差*/
     if (!rtk->opt.dynamics) {
         for (i=0;i<3;i++) {
             initx(rtk,rtk->sol.rr[i],VAR_POS,i);
@@ -553,19 +627,18 @@ static void udclk_ppp(rtk_t *rtk)
     int i;
     
     trace(3,"udclk_ppp:\n");
-    //修改
-    /* initialize every epoch for clock (white noise) */ /*循环遍历每一遍模式*/
+    
+    /* initialize every epoch for clock (white noise) */
     for (i=0;i<NSYS;i++) {
-        //if (rtk->opt.sateph==EPHOPT_PREC) { /*检测是否为精密星历*/
+        /*if (rtk->opt.sateph==EPHOPT_PREC) {*/
             /* time of prec ephemeris is based gpst */
             /* negelect receiver inter-system bias  */
-            //dtr=rtk->sol.dtr[0];
-       // }
-        /*否则利用前一秒的结果并考虑系统间时差信息*/
-       // else {
+            /*dtr=rtk->sol.dtr[0];*/
+        /*}*/
+        /*else {*/
             dtr=i==0?rtk->sol.dtr[0]:rtk->sol.dtr[0]+rtk->sol.dtr[i];
-      // }
-        initx(rtk,CLIGHT*dtr,VAR_CLK,IC(i,&rtk->opt)); /*初始化时钟信息和方差*/
+        /*}*/
+        initx(rtk,CLIGHT*dtr,VAR_CLK,IC(i,&rtk->opt));
     }
 }
 /* temporal update of tropospheric parameters --------------------------------*/
@@ -576,7 +649,7 @@ static void udtrop_ppp(rtk_t *rtk)
     
     trace(3,"udtrop_ppp:\n");
     
-    if (rtk->x[i]==0.0) { /*判断状态量是否为0，需要进行赋初值*/
+    if (rtk->x[i]==0.0) {
         ecef2pos(rtk->sol.rr,pos);
         ztd=sbstropcorr(rtk->sol.time,pos,azel,&var);
         initx(rtk,ztd,var,i);
@@ -585,7 +658,7 @@ static void udtrop_ppp(rtk_t *rtk)
             for (j=i+1;j<i+3;j++) initx(rtk,1E-6,VAR_GRA,j);
         }
     }
-    else { /*已有初值，则直接更新p阵*/
+    else {
         rtk->P[i+i*rtk->nx]+=SQR(rtk->opt.prn[2])*fabs(rtk->tt);
         
         if (rtk->opt.tropopt>=TROPOPT_ESTG) {
@@ -605,19 +678,17 @@ static void udiono_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     trace(3,"udiono_ppp:\n");
     
     if ((p=strstr(rtk->opt.pppopt,"-GAP_RESION="))) {
-        sscanf_s(p,"-GAP_RESION=%d",&gap_resion);
+        sscanf(p,"-GAP_RESION=%d",&gap_resion);
     }
-    /*检测相位中断是否超过门限，重置电离层参数*/
     for (i=0;i<MAXSAT;i++) {
         j=II(i+1,&rtk->opt);
         if (rtk->x[j]!=0.0&&(int)rtk->ssat[i].outc[0]>gap_resion) {
             rtk->x[j]=0.0;
         }
     }
-    /*遍历各个卫星的电离层参数*/
     for (i=0;i<n;i++) {
         j=II(obs[i].sat,&rtk->opt);
-        if (rtk->x[j]==0.0) { /*如果检测为0根据伪距计算电离层初值并初始化*/
+        if (rtk->x[j]==0.0) {
             freq1=sat2freq(obs[i].sat,obs[i].code[0],nav);
             freq2=sat2freq(obs[i].sat,obs[i].code[1],nav);
             if (obs[i].P[0]==0.0||obs[i].P[1]==0.0||freq1==0.0||freq2==0.0) {
@@ -629,7 +700,7 @@ static void udiono_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
             ion/=ionmapf(pos,azel);
             initx(rtk,ion,VAR_IONO,j);
         }
-        else { /*否则根据高度角更新p阵*/
+        else {
             sinel=sin(MAX(rtk->ssat[obs[i].sat-1].azel[1],5.0*D2R));
             rtk->P[j+j*rtk->nx]+=SQR(rtk->opt.prn[1]/sinel)*fabs(rtk->tt);
         }
@@ -655,29 +726,27 @@ static void udbias_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     
     trace(3,"udbias  : n=%d\n",n);
     
-    /* handle day-boundary clock jump */ /*检测边界时间翻转*/
+    /* handle day-boundary clock jump */
     if (rtk->opt.posopt[5]) {
         clk_jump=ROUND(time2gpst(obs[0].time,NULL)*10)%864000==0;
     }
-    /*清除卫星周跳标志位*/
     for (i=0;i<MAXSAT;i++) for (j=0;j<rtk->opt.nf;j++) {
         rtk->ssat[i].slip[j]=0;
     }
-    /* detect cycle slip by LLI */ /*检测周跳：LLI*/
+    /* detect cycle slip by LLI */
     detslp_ll(rtk,obs,n);
     
-    /* detect cycle slip by geometry-free phase jump */ /*检测周跳：几何无关gf*/
+    /* detect cycle slip by geometry-free phase jump */
     detslp_gf(rtk,obs,n,nav);
     
-    /* detect slip by Melbourne-Wubbena linear combination jump */ /*检测周跳：MW组合*/
+    /* detect slip by Melbourne-Wubbena linear combination jump */
     detslp_mw(rtk,obs,n,nav);
     
-    ecef2pos(rtk->sol.rr,pos); /*前一时刻位置转化ECEF-》LLA*/
+    ecef2pos(rtk->sol.rr,pos);
     
-    for (f=0;f<NF(&rtk->opt);f++) { /*遍历各个频点，更新模糊度量*/
+    for (f=0;f<NF(&rtk->opt);f++) {
         
         /* reset phase-bias if expire obs outage counter */
-        /*遍历各个卫星，如果检测到相位中断大于门限，或单历元模式，或检测到时钟跳变，则重新赋值模糊度参数*/
         for (i=0;i<MAXSAT;i++) {
             if (++rtk->ssat[i].outc[f]>(uint32_t)rtk->opt.maxout||
                 rtk->opt.modear==ARMODE_INST||clk_jump) {
@@ -687,17 +756,15 @@ static void udbias_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
         for (i=k=0;i<n&&i<MAXOBS;i++) {
             sat=obs[i].sat;
             j=IB(sat,f,&rtk->opt);
-            /*观测量修正，得到修正后的观测量和修正后的无电离层组合观测量（天线相位中心修正，相位缠绕修正，卫星硬件延迟修正*/
             corr_meas(obs+i,nav,rtk->ssat[sat-1].azel,&rtk->opt,dantr,dants,
                       0.0,L,P,&Lc,&Pc);
             
-            bias[i]=0.0; /*无电离层组合，bias赋值*/
+            bias[i]=0.0;
             
             if (rtk->opt.ionoopt==IONOOPT_IFLC) {
                 bias[i]=Lc-Pc;
                 slip[i]=rtk->ssat[sat-1].slip[0]||rtk->ssat[sat-1].slip[1];
             }
-            /*否则根据单个观测量的载波相位，减去伪距，再补偿根据双频伪距估算出来的电离层延迟，得到模糊度初值*/
             else if (L[f]!=0.0&&P[f]!=0.0) {
                 freq1=sat2freq(sat,obs[i].code[0],nav);
                 freq2=sat2freq(sat,obs[i].code[f],nav);
@@ -708,7 +775,6 @@ static void udbias_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
                 ion=(obs[i].P[0]-obs[i].P[f])/(1.0-SQR(freq1/freq2));
                 bias[i]=L[f]-P[f]+2.0*ion*SQR(freq1/freq2);
             }
-            /*检测值是否有效，是否周跳，如果正常，统计初始模糊度和状态量之间的整体偏差*/
             if (rtk->x[j]==0.0||slip[i]||bias[i]==0.0) continue;
             
             offset+=bias[i]-rtk->x[j];
@@ -778,7 +844,7 @@ static void satantpcv(const double *rs, const double *rr, const pcv_t *pcv,
         ru[i]=rr[i]-rs[i];
         rz[i]=-rs[i];
     }
-    if (!normv3(ru,eu)||!normv3(rz,ez)) return; //三维向量归一化
+    if (!normv3(ru,eu)||!normv3(rz,ez)) return;
     
     cosa=dot(eu,ez,3);
     cosa=cosa<-1.0?-1.0:(cosa>1.0?1.0:cosa);
@@ -806,12 +872,12 @@ static double trop_model_prec(gtime_t time, const double *pos,
         cotz=1.0/tan(azel[1]);
         grad_n=m_w*cotz*cos(azel[0]);
         grad_e=m_w*cotz*sin(azel[0]);
-        m_w+= grad_n * x[1] + grad_e * x[2];
+        m_w+=grad_n*x[1]+grad_e*x[2];
         dtdx[1]=grad_n*(x[0]-zhd);
         dtdx[2]=grad_e*(x[0]-zhd);
     }
-    *swd = m_w * (x[0] - zhd) + m_w*cotz * (x[1] * cos(azel[0]) + x[2] * sin(azel[0]));
-    *swd_n = (*swd) / m_w;
+    *swd=m_w*(x[0]-zhd)+m_w*cotz*(x[1]*cos(azel[0])+x[2]*cos(azel[1]));
+    *swd_n=(*swd)/m_w;
     dtdx[0]=m_w;
     *var=SQR(0.01);
     return m_h*zhd+m_w*(x[0]-zhd);
@@ -819,7 +885,7 @@ static double trop_model_prec(gtime_t time, const double *pos,
 /* tropospheric model ---------------------------------------------------------*/
 static int model_trop(gtime_t time, const double *pos, const double *azel,
                       const prcopt_t *opt, const double *x, double *dtdx,
-                      const nav_t *nav, double *dtrp, double *var,double *swd, double *swd_n)
+                      const nav_t *nav, double *dtrp, double *var,double *swd,double *swd_n)
 {
     double trp[3]={0};
     
@@ -875,7 +941,7 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
 {
     prcopt_t *opt=&rtk->opt;
     double y,r,cdtr,bias,C=0.0,rr[3],pos[3],e[3],dtdx[3],L[NFREQ],P[NFREQ],Lc,Pc;
-    double var[MAXOBS * 2], dtrp = 0.0, dion = 0.0, swd = 0.0, swd_n=0.0,vart = 0.0, vari = 0.0, dcb, freq;
+    double var[MAXOBS*2],dtrp=0.0,dion=0.0,swd=0.0,swd_n=0.0,vart=0.0,vari=0.0,dcb,freq;
     double dantr[NFREQ]={0},dants[NFREQ]={0};
     double ve[MAXOBS*2*NFREQ]={0},vmax=0;
     char str[32];
@@ -888,10 +954,17 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
     
     for (i=0;i<3;i++) rr[i]=x[i]+dr[i];
     ecef2pos(rr,pos);
-    
+
     for (i=0;i<n&&i<MAXOBS;i++) {
         sat=obs[i].sat;
-        
+        sys=satsys(sat,NULL);
+        if (sys==SYS_CMP)
+        {
+            int sss=0;
+            if (r=geodist(rs+i*6,rr,e)<=0.0)  sss=1;
+            if (satazel(pos,e,azel+i*2)<opt->elmin) sss=2;
+            sss=0;
+        }
         if ((r=geodist(rs+i*6,rr,e))<=0.0||
             satazel(pos,e,azel+i*2)<opt->elmin) {
             exc[i]=1;
@@ -902,6 +975,7 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
             exc[i]=1;
             continue;
         }
+
         /* tropospheric and ionospheric model */
         if (!model_trop(obs[i].time,pos,azel+i*2,opt,x,dtdx,nav,&dtrp,&vart,&swd,&swd_n)||
             !model_iono(obs[i].time,pos,azel+i*2,opt,sat,x,nav,&dion,&vari)) {
@@ -969,18 +1043,18 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
             
             if (j%2==0) rtk->ssat[sat-1].resc[j/2]=v[nv];
             else        rtk->ssat[sat-1].resp[j/2]=v[nv];
-            //修改
-            if (post == 9) {
-                rtk->ssat[sat - 1].dtrp = dtrp;
-                rtk->ssat[sat - 1].swd = swd;
-                rtk->ssat[sat - 1].swd_n = swd_n;
+            
+            if (post==9){
+                  rtk->ssat[sat-1].dtrp=dtrp;
+                  rtk->ssat[sat-1].swd=swd;
+                  rtk->ssat[sat-1].swd_n=swd_n;
             }
-            else {
-                rtk->ssat[sat - 1].dtrp = 0.0;
-                rtk->ssat[sat - 1].swd = 0.0;
-                rtk->ssat[sat - 1].swd_n = 0.0;
+            else{
+                  rtk->ssat[sat-1].dtrp=0.0;
+                  rtk->ssat[sat-1].swd=0.0;
+                  rtk->ssat[sat-1].swd_n=0.0;
             }
-
+            
             /* variance */
             var[nv]=varerr(obs[i].sat,sys,azel[1+i*2],j/2,j%2,opt)+
                     vart+SQR(C)*vari+var_rs[i];
@@ -1102,10 +1176,12 @@ static int test_hold_amb(rtk_t *rtk)
 extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
 {
     const prcopt_t *opt=&rtk->opt;
-    //rs卫星坐标及速度、dts卫星的钟差和钟速、var残差、azel方位角及高度角
     double *rs,*dts,*var,*v,*H,*R,*azel,*xp,*Pp,dr[3]={0},std[3];
     char str[32];
     int i,j,nv,info,svh[MAXOBS],exc[MAXOBS]={0},stat=SOLQ_SINGLE;
+    double pos[3],rr[3];
+    int t=0;
+    double trp[3]={0};
     
     time2str(obs[0].time,str,2);
     trace(3,"pppos   : time=%s nx=%d n=%d\n",str,rtk->nx,n);
@@ -1114,17 +1190,17 @@ extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     
     for (i=0;i<MAXSAT;i++) for (j=0;j<opt->nf;j++) rtk->ssat[i].fix[j]=0;
     
-    /* temporal update of ekf states */ /*卡尔曼滤波的一步预测*/
+    /* temporal update of ekf states */
     udstate_ppp(rtk,obs,n,nav);
     
-    /* satellite positions and clocks */ /*计算卫星位置钟差*/
+    /* satellite positions and clocks */
     satposs(obs[0].time,obs,n,nav,rtk->opt.sateph,rs,dts,var,svh);
-    
-    /* exclude measurements of eclipsing satellite (block IIA) */ 
+
+    /* exclude measurements of eclipsing satellite (block IIA) */
     if (rtk->opt.posopt[3]) {
         testeclipse(obs,n,nav,rs);
     }
-    /* earth tides correction */ /*潮汐改正*/
+    /* earth tides correction */
     if (opt->tidecorr) {
         tidedisp(gpst2utc(obs[0].time),rtk->x,opt->tidecorr==1?1:7,&nav->erp,
                  opt->odisp[0],dr);
@@ -1174,11 +1250,19 @@ extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
         else {
             rtk->nfix=0;
         }
-        //修改
-        ppp_res(9, obs, n, rs, dts, var, svh, dr, exc, nav, xp, rtk, v, H, R, azel);
-
+        
+        ppp_res(9,obs,n,rs,dts,var,svh,dr,exc,nav,xp,rtk,v,H,R,azel);
+        
         /* update solution status */
         update_stat(rtk,obs,n,stat);
+        
+        /*
+        for (t = 0; t<3; t++) rr[t] = rtk->x[t];
+        ecef2pos(rr,pos);
+
+        matcpy(trp,xp+IT(opt),opt->tropopt==TROPOPT_EST?1:3,1);
+        cal_pwv_grid(obs[0].time,pos,trp);
+        */
         
         /* hold fixed ambiguities */
         if (stat==SOLQ_FIX&&test_hold_amb(rtk)) {

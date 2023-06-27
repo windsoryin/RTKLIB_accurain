@@ -113,8 +113,8 @@ const char *msm_sig_sbs[32]={
 const char *msm_sig_cmp[32]={
     /* BeiDou: ref [17] table 3.5-108 */
     ""  ,"2I","2Q","2X",""  ,""  ,""  ,"6I","6Q","6X",""  ,""  ,
-    ""  ,"7I","7Q","7X",""  ,""  ,""  ,""  ,""  ,"5D"  ,"5P"  ,"5X"  ,
-    "7D"  ,""  ,""  ,""  ,""  ,"1D"  ,"1P"  ,"1X"
+    ""  ,"7I","7Q","7X",""  ,""  ,""  ,""  ,""  ,""  ,""  ,""  ,
+    ""  ,""  ,""  ,""  ,""  ,""  ,""  ,""
 };
 const char *msm_sig_irn[32]={
     /* NavIC/IRNSS: ref [17] table 3.5-108.3 */
@@ -1400,7 +1400,7 @@ static int decode_type1042(rtcm_t *rtcm)
         return -1;
     }
     trace(4,"decode_type1042: prn=%d iode=%d toe=%.0f\n",prn,eph.iode,eph.toes);
-    
+    eph.iode=((int)eph.toes/720)%240;  /*BDS new ssr format*/
     if (rtcm->outtype) {
         msg=rtcm->msgtype+strlen(rtcm->msgtype);
         sprintf(msg," prn=%2d iode=%3d iodc=%3d week=%d toe=%6.0f toc=%6.0f svh=%02X",
@@ -1428,6 +1428,7 @@ static int decode_type1042(rtcm_t *rtcm)
     rtcm->nav.eph[sat-1]=eph;
     rtcm->ephset=0;
     rtcm->ephsat=sat;
+    /*eph.iode=((int)eph.toes/720)%240;  /*BDS new ssr format*/
     return 2;
 }
 /* decode SSR message epoch time ---------------------------------------------*/
@@ -1549,7 +1550,7 @@ static int decode_ssr1(rtcm_t *rtcm, int sys, int subtype)
         case SYS_GLO: np=5; ni= 8; nj= 0; offp=  0; break;
         case SYS_GAL: np=6; ni=10; nj= 0; offp=  0; break;
         case SYS_QZS: np=4; ni= 8; nj= 0; offp=192; break;
-        case SYS_CMP: np=6; ni=10; nj=24; offp=  1; break;
+        case SYS_CMP: np=6; ni=10; nj=8; offp=  0; break;    /*BDS new ssr format*/
         case SYS_SBS: np=6; ni= 9; nj=24; offp=120; break;
         default: return sync?0:10;
     }
@@ -1709,7 +1710,7 @@ static int decode_ssr4(rtcm_t *rtcm, int sys, int subtype)
         case SYS_GLO: np=5; ni= 8; nj= 0; offp=  0; break;
         case SYS_GAL: np=6; ni=10; nj= 0; offp=  0; break;
         case SYS_QZS: np=4; ni= 8; nj= 0; offp=192; break;
-        case SYS_CMP: np=6; ni=10; nj=24; offp=  1; break;
+        case SYS_CMP: np=6; ni=10; nj=8; offp=  0; break;   /* BDS new ssr format*/
         case SYS_SBS: np=6; ni= 9; nj=24; offp=120; break;
         default: return sync?0:10;
     }
@@ -1720,8 +1721,16 @@ static int decode_ssr4(rtcm_t *rtcm, int sys, int subtype)
     }
     for (j=0;j<nsat&&i+191+np+ni+nj<=rtcm->len*8;j++) {
         prn     =getbitu(rtcm->buff,i,np)+offp; i+=np;
-        iode    =getbitu(rtcm->buff,i,ni);      i+=ni;
-        iodcrc  =getbitu(rtcm->buff,i,nj);      i+=nj;
+        if(sys==SYS_CMP)
+        {
+            i+=ni;
+            iode=getbitu(rtcm->buff,i,nj);      i+=nj;
+        }
+        else
+        {
+            iode    =getbitu(rtcm->buff,i,ni);      i+=ni;
+            iodcrc  =getbitu(rtcm->buff,i,nj);      i+=nj;
+        }
         deph [0]=getbits(rtcm->buff,i,22)*1E-4; i+=22;
         deph [1]=getbits(rtcm->buff,i,20)*4E-4; i+=20;
         deph [2]=getbits(rtcm->buff,i,20)*4E-4; i+=20;
