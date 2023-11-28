@@ -423,24 +423,39 @@ static void initx(rtk_t *rtk, double xi, double var, int i)
 static double gfmeas(const obsd_t *obs, const nav_t *nav)
 {
     double freq1,freq2;
+    int sat=obs->sat;
+    int sys=satsys(sat,NULL);
+    int f1=0, f2=1;
 
-    freq1=sat2freq(obs->sat,obs->code[0],nav);
-    freq2=sat2freq(obs->sat,obs->code[1],nav);
-    if (freq1==0.0||freq2==0.0||obs->L[0]==0.0||obs->L[1]==0.0) return 0.0;
-    return (obs->L[0]/freq1-obs->L[1]/freq2)*CLIGHT;
+    if ((sys==SYS_CMP&&obs->code[3]==42)||(sys==SYS_GAL&&obs->code[3]==33))
+    {
+            f2=3;
+    }
+    freq2=sat2freq(obs->sat,obs->code[f2],nav);
+    freq1=sat2freq(obs->sat,obs->code[f1],nav);
+    if (freq1==0.0||freq2==0.0||obs->L[f1]==0.0||obs->L[f2]==0.0) return 0.0;
+    return (obs->L[f1]/freq1-obs->L[f2]/freq2)*CLIGHT;
+
 }
 /* Melbourne-Wubbena linear combination --------------------------------------*/
 static double mwmeas(const obsd_t *obs, const nav_t *nav)
 {
     double freq1,freq2;
+    int sat=obs->sat;
+    int sys=satsys(sat,NULL);
+    int f1=0, f2=1;
+    if ((sys==SYS_CMP&&obs->code[3]==42)||(sys==SYS_GAL&&obs->code[3]==33))
+    {
+            f2=3;
+    }
 
-    freq1=sat2freq(obs->sat,obs->code[0],nav);
-    freq2=sat2freq(obs->sat,obs->code[1],nav);
+    freq1=sat2freq(obs->sat,obs->code[f1],nav);
+    freq2=sat2freq(obs->sat,obs->code[f2],nav);
     
-    if (freq1==0.0||freq2==0.0||obs->L[0]==0.0||obs->L[1]==0.0||
-        obs->P[0]==0.0||obs->P[1]==0.0) return 0.0;
-    return (obs->L[0]-obs->L[1])*CLIGHT/(freq1-freq2)-
-           (freq1*obs->P[0]+freq2*obs->P[1])/(freq1+freq2);
+    if (freq1==0.0||freq2==0.0||obs->L[f1]==0.0||obs->L[f2]==0.0||
+        obs->P[f1]==0.0||obs->P[f2]==0.0) return 0.0;
+    return (obs->L[f1]-obs->L[f2])*CLIGHT/(freq1-freq2)-
+           (freq1*obs->P[f1]+freq2*obs->P[f2])/(freq1+freq2);
 }
 /* antenna corrected measurements --------------------------------------------*/
 static void corr_meas(const obsd_t *obs, const nav_t *nav, const double *azel,
@@ -450,7 +465,8 @@ static void corr_meas(const obsd_t *obs, const nav_t *nav, const double *azel,
 {
     double freq[NFREQ]={0},C1,C2;
     int i,sys=satsys(obs->sat,NULL);
-    
+    int f1=0, f2=1;
+
     for (i=0;i<NFREQ;i++) {
         L[i]=P[i]=0.0;
         freq[i]=sat2freq(obs->sat,obs->code[i],nav);
@@ -469,12 +485,19 @@ static void corr_meas(const obsd_t *obs, const nav_t *nav, const double *azel,
     }
     /* iono-free LC */
     *Lc=*Pc=0.0;
-    if (freq[0]==0.0||freq[1]==0.0) return;
-    C1= SQR(freq[0])/(SQR(freq[0])-SQR(freq[1]));
-    C2=-SQR(freq[1])/(SQR(freq[0])-SQR(freq[1]));
+
+    if ((sys==SYS_CMP&&obs->code[3]==42)||(sys==SYS_GAL&&obs->code[3]==33))
+    {
+            f2=3;
+    }
+
+    if (freq[f1]==0.0||freq[f2]==0.0) return;
+    C1= SQR(freq[f1])/(SQR(freq[f1])-SQR(freq[f2]));
+    C2=-SQR(freq[f2])/(SQR(freq[f1])-SQR(freq[f2]));
     
-    if (L[0]!=0.0&&L[1]!=0.0) *Lc=C1*L[0]+C2*L[1];
-    if (P[0]!=0.0&&P[1]!=0.0) *Pc=C1*P[0]+C2*P[1];
+    if (L[f1]!=0.0&&L[f2]!=0.0) *Lc=C1*L[f1]+C2*L[f2];
+    if (P[f1]!=0.0&&P[f2]!=0.0) *Pc=C1*P[f1]+C2*P[f2];
+    
 }
 /* detect cycle slip by LLI --------------------------------------------------*/
 static void detslp_ll(rtk_t *rtk, const obsd_t *obs, int n)
@@ -674,7 +697,10 @@ static void udiono_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     double freq1,freq2,ion,sinel,pos[3],*azel;
     char *p;
     int i,j,gap_resion=GAP_RESION;
-    
+    int sat=obs->sat;
+    int sys=satsys(sat,NULL);
+    int f1=0, f2=1;
+
     trace(3,"udiono_ppp:\n");
     
     if ((p=strstr(rtk->opt.pppopt,"-GAP_RESION="))) {
@@ -689,12 +715,17 @@ static void udiono_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     for (i=0;i<n;i++) {
         j=II(obs[i].sat,&rtk->opt);
         if (rtk->x[j]==0.0) {
-            freq1=sat2freq(obs[i].sat,obs[i].code[0],nav);
-            freq2=sat2freq(obs[i].sat,obs[i].code[1],nav);
-            if (obs[i].P[0]==0.0||obs[i].P[1]==0.0||freq1==0.0||freq2==0.0) {
+
+            if ((sys==SYS_CMP&&obs->code[3]==42)||(sys==SYS_GAL&&obs->code[3]==33))
+            {
+                    f2=3;
+            }
+            freq1=sat2freq(obs[i].sat,obs[i].code[f1],nav);
+            freq2=sat2freq(obs[i].sat,obs[i].code[f2],nav);
+            if (obs[i].P[f1]==0.0||obs[i].P[f2]==0.0||freq1==0.0||freq2==0.0) {
                 continue;
             }
-            ion=(obs[i].P[0]-obs[i].P[1])/(SQR(FREQ1/freq1)-SQR(FREQ1/freq2));
+            ion=(obs[i].P[f1]-obs[i].P[f2])/(SQR(FREQ1/freq1)-SQR(FREQ1/freq2));
             ecef2pos(rtk->sol.rr,pos);
             azel=rtk->ssat[obs[i].sat-1].azel;
             ion/=ionmapf(pos,azel);
@@ -958,8 +989,17 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
     for (i=0;i<n&&i<MAXOBS;i++) {
         sat=obs[i].sat;
         sys=satsys(sat,NULL);
+
+
+
         if (sys==SYS_CMP)
         {
+            double freq_test=0.0;
+            freq_test=code2freq(sys, obs[i].code[0], 1);
+            if (freq_test==FREQ3_CMP)
+            {
+             int bd3=1;
+            }
             int sss=0;
             if (r=geodist(rs+i*6,rr,e)<=0.0)  sss=1;
             if (satazel(pos,e,azel+i*2)<opt->elmin) sss=2;
@@ -1185,11 +1225,25 @@ extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     
     time2str(obs[0].time,str,2);
     trace(3,"pppos   : time=%s nx=%d n=%d\n",str,rtk->nx,n);
-    
+
+
     rs=mat(6,n); dts=mat(2,n); var=mat(1,n); azel=zeros(2,n);
     
     for (i=0;i<MAXSAT;i++) for (j=0;j<opt->nf;j++) rtk->ssat[i].fix[j]=0;
-    
+
+    for (i=0;i<n&&i<MAXOBS;i++) {
+        int sat, sys;
+        sat = obs[i].sat;
+        sys = satsys(sat, NULL);
+        if (sys == SYS_CMP) {
+            double freq_test = 0.0;
+
+            if (freq_test == FREQ3_CMP) {
+                int bd3 = 1;
+            }
+        }
+    }
+
     /* temporal update of ekf states */
     udstate_ppp(rtk,obs,n,nav);
     
@@ -1256,13 +1310,13 @@ extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
         /* update solution status */
         update_stat(rtk,obs,n,stat);
         
-        /*
-        for (t = 0; t<3; t++) rr[t] = rtk->x[t];
+
+        /*for (t=0;t<3;t++) rr[t]=rtk->x[t];
         ecef2pos(rr,pos);
 
         matcpy(trp,xp+IT(opt),opt->tropopt==TROPOPT_EST?1:3,1);
-        cal_pwv_grid(obs[0].time,pos,trp);
-        */
+        cal_pwv_grid(obs[0].time,pos,trp);*/
+
         
         /* hold fixed ambiguities */
         if (stat==SOLQ_FIX&&test_hold_amb(rtk)) {
