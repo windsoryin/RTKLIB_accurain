@@ -876,7 +876,7 @@ static double trop_model_prec(gtime_t time, const double *pos,
         dtdx[1]=grad_n*(x[0]-zhd);
         dtdx[2]=grad_e*(x[0]-zhd);
     }
-    *swd=m_w*(x[0]-zhd)+m_w*cotz*(x[1]*cos(azel[0])+x[2]*cos(azel[1]));
+    *swd=m_w*(x[0]-zhd)+m_w*cotz*(x[1]*cos(azel[0])+x[2]*sin(azel[0]));
     *swd_n=(*swd)/m_w;
     dtdx[0]=m_w;
     *var=SQR(0.01);
